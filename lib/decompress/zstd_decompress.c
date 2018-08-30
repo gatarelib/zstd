@@ -574,6 +574,18 @@ size_t ZSTD_decodeLiteralsBlock(ZSTD_DCtx* dctx,
         {
         case set_repeat:
             if (dctx->litEntropy==0) return ERROR(dictionary_corrupted);
+#if 1
+            /* prefetch huffman table if used */
+            {   //size_t const pSize = sizeof(HUF_DTABLE_SIZE(HufLog) * sizeof(HUF_DTable));
+                //size_t const pSize = sizeof(dctx->entropy.hufTable);
+                //size_t const pSize = sizeof((2 KB + 1) * sizeof(HUF_DTable));
+                size_t const pSize = (1 KB + 1) * sizeof(HUF_DTable);   // for X1 table
+                //printf("pSize = %zu \n", pSize);
+                const char* const pStart = (const char*)dctx->HUFptr;
+                for (size_t idx = 0; idx < pSize; idx += 64) {
+                    __builtin_prefetch(pStart + idx, 0 /* rw == read */, 2 /* locality */);
+            }   }
+#endif
             /* fall-through */
         case set_compressed:
             if (srcSize < 5) return ERROR(corruption_detected);   /* srcSize >= MIN_CBLOCK_SIZE == 3; here we need up to 5 for case 3 */
@@ -905,6 +917,14 @@ static size_t ZSTD_buildSeqTable(ZSTD_seqSymbol* DTableSpace, const ZSTD_seqSymb
         return 0;
     case set_repeat:
         if (!flagRepeatTable) return ERROR(corruption_detected);
+#if 1
+        /* prefetch FSE table if used */
+        {   size_t const pSize = sizeof(ZSTD_seqSymbol) * (SEQSYMBOL_TABLE_SIZE(maxLog));
+            const char* const pStart = (const char*)(*DTablePtr);
+            for (size_t idx = 0; idx < pSize; idx += 64) {
+                __builtin_prefetch(pStart + idx, 0 /* rw == read */, 2 /* locality */);
+        }   }
+#endif
         return 0;
     case set_compressed :
         {   U32 tableLog;
@@ -2205,7 +2225,8 @@ static size_t ZSTD_loadEntropy(ZSTD_entropyDTables_t* entropy, const void* const
     dictPtr += 8;   /* skip header = magic + dictID */
 
 
-    {   size_t const hSize = HUF_readDTableX2_wksp(
+//    {   size_t const hSize = HUF_readDTableX2_wksp(
+    {   size_t const hSize = HUF_readDTableX1_wksp(
             entropy->hufTable, dictPtr, dictEnd - dictPtr,
             entropy->workspace, sizeof(entropy->workspace));
         if (HUF_isError(hSize)) return ERROR(dictionary_corrupted);
@@ -2357,6 +2378,26 @@ size_t ZSTD_decompressBegin_usingDDict(ZSTD_DCtx* dstDCtx, const ZSTD_DDict* ddi
             dstDCtx->entropy.rep[0] = ddict->entropy.rep[0];
             dstDCtx->entropy.rep[1] = ddict->entropy.rep[1];
             dstDCtx->entropy.rep[2] = ddict->entropy.rep[2];
+
+#if 0
+            /* prefetch entropy tables */
+            {   size_t const pSize = sizeof(ddict->entropy);
+                const char* const pStart = (const char*)&(ddict->entropy);
+                for (size_t idx = 0; idx < pSize; idx += 64) {
+                  __builtin_prefetch(pStart + idx, 0 /* rw==read */, 2 /* locality */);
+            }   }
+#endif
+
+#if 1
+            /* prefetch dictionary content */
+            {   size_t const dictSize = ddict->dictSize;
+                size_t const pSize = MIN(dictSize, 128 KB);   /* proposed heuristic : 32 x frameContentSize => need to know frameContentSize */
+                const char* const pStart = (const char*)ddict->dictContent + dictSize - pSize;
+                for (size_t idx = 0; idx < pSize; idx += 64) {
+                  __builtin_prefetch(pStart + idx, 0 /* rw==read */, 2 /* locality */);
+            }   }
+#endif
+
         } else {
             dstDCtx->litEntropy = 0;
             dstDCtx->fseEntropy = 0;

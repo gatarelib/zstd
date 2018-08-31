@@ -15,8 +15,9 @@ LIBZSTD = $(LIBDIR)/libzstd.a
 CPPFLAGS+= -I$(LIBDIR) -I$(LIBDIR)/common -I$(LIBDIR)/dictBuilder -I$(PROGDIR)
 
 CFLAGS  ?= -O3
+CFLAGS  += -std=gnu99
 DEBUGFLAGS= -Wall -Wextra -Wcast-qual -Wcast-align -Wshadow \
-            -Wstrict-aliasing=1 -Wswitch-enum -Wdeclaration-after-statement \
+            -Wstrict-aliasing=1 -Wswitch-enum \
             -Wstrict-prototypes -Wundef -Wpointer-arith -Wformat-security \
             -Wvla -Wformat=2 -Winit-self -Wfloat-equal -Wwrite-strings \
             -Wredundant-decls
@@ -27,7 +28,7 @@ default: largeNbDicts
 
 all : largeNbDicts
 
-largeNbDicts: bench.o datagen.o xxhash.o $(LIBZSTD) largeNbDicts.c
+largeNbDicts: bench.o datagen.o xxhash.o largeNbDicts.c $(LIBZSTD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
 .PHONY: $(LIBZSTD)
